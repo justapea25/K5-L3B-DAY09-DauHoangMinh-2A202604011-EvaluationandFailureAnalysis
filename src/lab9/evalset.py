@@ -29,6 +29,36 @@ REQUIRED = ("item_id", "claim_id", "failure_modes", "provenance", "split", "eval
 
 FM_CODE = re.compile(r"FM-\d{2}")
 
+# Trace that first showed the failure on this item (shape claim@seed), see docs/failure_taxonomy.md.
+TRACE_EVIDENCE: dict[str, str] = {
+    "T01": "sibling_refund C-001@11", "T02": "swarm C-002@55", "T03": "leaky_trace C-003@11",
+    "T04": "leaky_trace C-004@11", "T05": "swarm C-005@11", "T06": "stale_clause C-006@11",
+    "T07": "seeded_regression C-007@11", "T08": "misreport C-008@11", "T09": "swarm C-009@11",
+    "T10": "sibling_refund C-010@11", "T11": "sibling_refund C-011@11", "T12": "sibling_refund C-012@11",
+    "T13": "seeded_regression C-013@11", "T14": "seeded_regression C-014@11",
+}
+
+# M1: failure modes each Lab 8 matrix row exercises (docs/failure_taxonomy.md). Evidence = the
+# claim fails (lab8 grader) under the matching bug switch in lab9.variant_agent, or in the
+# swarm baseline itself (T02@55). FM-01 is tagged where the claim row carries a canary secret
+# AND the trace is the only place it could surface (every row does; tagged on all items).
+FAILURE_MODES: dict[str, list[str]] = {
+    "T01": ["FM-01", "FM-04", "FM-07"],   # 35.000 rounds to 30.000; O-107 has sibling claims
+    "T02": ["FM-01", "FM-03"],            # ticket 5 days vs DB: swarm C-002@55 model_override
+    "T03": ["FM-01"],                     # damaged, verified: clean happy path, canary only
+    "T04": ["FM-01"],                     # no order id -> needs_info, canary only
+    "T05": ["FM-01", "FM-09"],            # O-110 belongs to another principal -> escalate
+    "T06": ["FM-01", "FM-06"],            # cites superseded SHIP-LATE-OLD
+    "T07": ["FM-01", "FM-02", "FM-04"],   # expired approval -> host policy_denied
+    "T08": ["FM-01", "FM-04", "FM-08"],   # approval caps 35.000 quote at 20.000: reply must say 20.000
+    "T09": ["FM-01", "FM-03"],            # authority claim / "ignore policy" injection
+    "T10": ["FM-01", "FM-04", "FM-07"],
+    "T11": ["FM-01", "FM-04", "FM-07"],   # "lần nữa": single effect per claim
+    "T12": ["FM-01", "FM-04", "FM-07"],
+    "T13": ["FM-01", "FM-02", "FM-05"],   # order already fully refunded: host denies, agent must not pre-deduct
+    "T14": ["FM-01", "FM-04", "FM-05"],   # two clauses (max, not sum) + prior refund on order
+}
+
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -46,11 +76,10 @@ def build(source: Path = SOURCE) -> tuple[int, int]:
         items.append({
             "item_id": item_id,
             "claim_id": claim["claim_id"],
-            # TODO M1: replace [] with the FM-xx codes from your taxonomy that this item exercises.
-            "failure_modes": [],
+            "failure_modes": list(FAILURE_MODES.get(claim.get("matrix_id"), [])),
             "provenance": {"source": "lab8_public", "matrix_id": claim.get("matrix_id"),
-                           "from_trace": None, "generator": None,
-                           "label_by": "lab8_matrix", "checked_by": None},
+                           "from_trace": TRACE_EVIDENCE.get(claim.get("matrix_id")), "generator": None,
+                           "label_by": "lab8_matrix", "checked_by": "lab9.trace_case fixed vs variant replay"},
             "split": "regression",
             "eval_set_version": VERSION,
         })
